@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gerar roteiro</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --text: #e7ecf3;
+      --muted: #8b9bb4;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --border: #2d3a4d;
+      --ok: #22c55e;
+      --err: #f87171;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: ui-sans-serif, system-ui, Segoe UI, Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+    .wrap { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
+    h1 { font-size: 1.35rem; font-weight: 600; margin: 0 0 1rem; }
+    label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 0.35rem; }
+    textarea, input[type="text"], input[type="date"] {
+      width: 100%;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 0.65rem 0.75rem;
+      font-size: 0.9rem;
+    }
+    .date-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem 1rem;
+    }
+    .date-row .field { flex: 1 1 200px; margin-bottom: 0; }
+    input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.85); cursor: pointer; }
+    textarea { min-height: 140px; resize: vertical; font-family: inherit; }
+    #response-out { min-height: 280px; }
+    textarea.mono { font-family: ui-monospace, Consolas, monospace; font-size: 0.82rem; }
+    .field { margin-bottom: 1rem; }
+    .btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 0.55rem 1.1rem;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    .btn:hover { background: var(--accent-hover); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .msg {
+      margin-top: 1rem;
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      white-space: pre-wrap;
+      display: none;
+    }
+    .msg.show { display: block; }
+    .msg.ok { background: rgba(34, 197, 94, 0.12); border: 1px solid rgba(34, 197, 94, 0.35); color: #86efac; }
+    .msg.err { background: rgba(248, 113, 113, 0.1); border: 1px solid rgba(248, 113, 113, 0.35); color: var(--err); }
+    .hint { font-size: 0.8rem; color: var(--muted); margin-top: 0.25rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Gerar roteiro (local)</h1>
+
+    <main>
+      <div class="field">
+        <label for="user-id">Usuário (id para S3 / perfil)</label>
+        <input type="text" id="user-id" placeholder="Ex.: user-123 ou email" autocomplete="username" />
+      </div>
+      <div class="field">
+        <label for="folder-script">Pasta com transcrições (subpasta em {{ base_hint }})</label>
+        <input type="text" id="folder-script" placeholder="Ex.: Londres" autocomplete="off" />
+        <p class="hint">Se existir, use uma pasta com <code>transcricao*.txt</code>; a pasta pode ser criada depois — sem arquivos o roteiro segue só com o que os agentes inferirem.</p>
+      </div>
+      <div class="field">
+        <label for="city">Nome da cidade</label>
+        <input type="text" id="city" placeholder="Ex.: Londres" autocomplete="off" />
+        <p class="hint">Se vazio, usa o nome da pasta como cidade.</p>
+      </div>
+      <div class="date-row">
+        <div class="field">
+          <label for="date-start">Data inicial</label>
+          <input type="date" id="date-start" required />
+        </div>
+        <div class="field">
+          <label for="date-end">Data final</label>
+          <input type="date" id="date-end" required />
+        </div>
+      </div>
+      <p class="hint" style="margin: -0.5rem 0 1rem;">A duração em dias é calculada automaticamente a partir do intervalo.</p>
+      <div class="field">
+        <label for="complementary">Informações complementares</label>
+        <textarea id="complementary" rows="4" placeholder="Preferências, restrições, lugares que quer evitar, etc. (opcional)"></textarea>
+      </div>
+      <button type="button" class="btn" id="btn-script">Gerar roteiro</button>
+      <div id="msg-script" class="msg" role="status"></div>
+      <div class="field" style="margin-top: 1.25rem;">
+        <label for="response-out">Resposta final (arquivo em Generated_Trips, pasta com o nome da cidade)</label>
+        <textarea id="response-out" class="mono" readonly placeholder="A resposta aparecerá aqui."></textarea>
+      </div>
+      <details style="margin-top: 1rem;">
+        <summary style="cursor: pointer; color: var(--muted); font-size: 0.9rem;">Saída por agente (debug)</summary>
+        <textarea id="stages-out" class="mono" readonly style="min-height: 180px; margin-top: 0.5rem;" placeholder="JSON com cada etapa do pipeline."></textarea>
+      </details>
+    </main>
+  </div>
+  <script>
+    function showMsg(el, ok, text) {
+      el.textContent = text;
+      el.className = 'msg show ' + (ok ? 'ok' : 'err');
+    }
+    function hideMsg(el) {
+      el.className = 'msg';
+      el.textContent = '';
+    }
+
+    document.getElementById('btn-script').addEventListener('click', async () => {
+      const msg = document.getElementById('msg-script');
+      const out = document.getElementById('response-out');
+      const btn = document.getElementById('btn-script');
+      hideMsg(msg);
+      out.value = '';
+      btn.disabled = true;
+      try {
+        const dateStart = document.getElementById('date-start').value;
+        const dateEnd = document.getElementById('date-end').value;
+        const uid = document.getElementById('user-id').value.trim();
+        if (!uid) {
+          showMsg(msg, false, 'Informe o usuário (campo obrigatório para perfil no S3).');
+          btn.disabled = false;
+          return;
+        }
+        if (!dateStart || !dateEnd) {
+          showMsg(msg, false, 'Informe a data inicial e a data final do intervalo.');
+          btn.disabled = false;
+          return;
+        }
+        if (dateEnd < dateStart) {
+          showMsg(msg, false, 'A data final não pode ser anterior à data inicial.');
+          btn.disabled = false;
+          return;
+        }
+        const res = await fetch('/api/generate-script', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user: document.getElementById('user-id').value,
+            folder: document.getElementById('folder-script').value,
+            city: document.getElementById('city').value,
+            date_start: dateStart,
+            date_end: dateEnd,
+            complementary_info: document.getElementById('complementary').value,
+          }),
+        });
+        const data = await res.json();
+        if (!data.ok) {
+          showMsg(msg, false, data.error || 'Erro desconhecido.');
+          return;
+        }
+        out.value = data.response || '';
+        const stagesEl = document.getElementById('stages-out');
+        if (data.stages) {
+          stagesEl.value = JSON.stringify(data.stages, null, 2);
+        } else {
+          stagesEl.value = '';
+        }
+        showMsg(msg, true, data.message + '\nArquivo: ' + data.path);
+      } catch (e) {
+        showMsg(msg, false, String(e));
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
