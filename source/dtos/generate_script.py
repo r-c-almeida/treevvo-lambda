@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime
-from pathlib import Path
 from typing import Any
 
 
@@ -79,7 +78,6 @@ class GenerateScriptPayload:
 class GenerateScriptResult:
     """Saída do caso de uso pronta para serializar em JSON."""
 
-    path: Path
     response_text: str
     stages: dict[str, str]
     pipeline_meta: dict[str, Any]
@@ -88,8 +86,7 @@ class GenerateScriptResult:
     def as_api_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
             "ok": True,
-            "message": "Roteiro gerado e salvo com sucesso.",
-            "path": str(self.path),
+            "message": "Roteiro gerado com sucesso.",
             "response": self.response_text,
             "stages": self.stages,
             "pipeline_meta": self.pipeline_meta,

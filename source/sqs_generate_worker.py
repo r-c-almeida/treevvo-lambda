@@ -54,7 +54,11 @@ def handle_sqs_lambda_event(event: dict[str, Any], context: Any) -> dict[str, An
             process_message_body(body, service=service)
             logger.info("Mensagem processada com sucesso messageId=%s", mid or "(sem id)")
         except Exception:
-            logger.exception("Falha ao processar mensagem SQS messageId=%s", mid or "(sem id)")
+            logger.exception(
+                "Falha ao processar mensagem SQS messageId=%s body_preview=%r",
+                mid or "(sem id)",
+                (body[:500] + "…") if len(body) > 500 else body,
+            )
             if mid:
                 failures.append({"itemIdentifier": mid})
 

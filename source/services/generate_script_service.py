@@ -1,9 +1,9 @@
 """
 Caso de uso: gerar roteiro a partir de uma pasta de transcrições (Lambda SQS / CLI).
 
-Encapsula regras de entrada (cidade default), chamada a ``Application`` e leitura do arquivo gerado.
+Encapsula regras de entrada (cidade default), chamada a ``Application`` e uso do texto gerado em memória.
 Se a subpasta de transcrições não existir, segue mesmo assim (só aviso no log).
-Ao final, opcionalmente persiste perfil + TXT no S3 (``TripProfileS3Service``).
+Opcionalmente persiste perfil + TXT no S3 (``TripProfileS3Service``); não grava arquivos locais.
 """
 
 from __future__ import annotations
@@ -63,24 +63,23 @@ class GenerateScriptService:
         app_job = Application(base_dir=target)
         s3_keys: dict[str, str] | None = None
         try:
-            out_path, pipeline_result = app_job.run(
+            pipeline_result = app_job.run(
                 city=city,
                 days=payload.days,
                 dates_note=payload.dates_note,
                 complementary_info=payload.complementary_info,
             )
-            text = out_path.read_text(encoding="utf-8")
+            text = pipeline_result.final_text
 
             logger.info(
-                "GenerateScriptService sucesso path=%s response_chars=%d stages=%s",
-                out_path,
+                "GenerateScriptService sucesso response_chars=%d stages=%s",
                 len(text),
                 list(pipeline_result.agent_outputs.keys()),
             )
 
             if self._trip_profile_s3 is not None:
                 logger.info(
-                    "[Sync API] Gravando resultado no S3 após pipeline OK | user=%r",
+                    "[Worker] Gravando resultado no S3 após pipeline OK | user=%r",
                     payload.user,
                 )
                 try:
@@ -90,19 +89,18 @@ class GenerateScriptService:
                         success=True,
                         trip_text=text,
                     )
-                    logger.info("[Sync API] S3 concluído com sucesso | s3=%s", s3_keys)
+                    logger.info("[Worker] S3 concluído com sucesso | s3=%s", s3_keys)
                 except Exception:
                     logger.exception(
-                        "[Sync API] Falha ao gravar no S3 (user=%r); HTTP 200 segue com o roteiro.",
+                        "[Worker] Falha ao gravar no S3 (user=%r); resultado só em memória.",
                         payload.user,
                     )
             else:
                 logger.info(
-                    "[Sync API] S3 ignorado (S3_TRIP_PROFILE_BUCKET vazio); só arquivo local gerado."
+                    "[Worker] S3 desligado (S3_TRIP_PROFILE_BUCKET vazio); roteiro só em memória."
                 )
 
             return GenerateScriptResult(
-                path=out_path,
                 response_text=text,
                 stages=pipeline_result.agent_outputs,
                 pipeline_meta=pipeline_result.meta,
@@ -111,7 +109,7 @@ class GenerateScriptService:
         except Exception as e:
             if self._trip_profile_s3 is not None:
                 logger.info(
-                    "[Sync API] Registrando falha no S3 | user=%r | erro=%s",
+                    "[Worker] Registrando falha no S3 | user=%r | erro=%s",
                     payload.user,
                     str(e)[:200],
                 )
@@ -123,10 +121,10 @@ class GenerateScriptService:
                         trip_text="",
                         error_message=str(e)[:4000],
                     )
-                    logger.info("[Sync API] Entrada ERROR gravada no profile S3 | user=%r", payload.user)
+                    logger.info("[Worker] Entrada ERROR gravada no profile S3 | user=%r", payload.user)
                 except Exception:
                     logger.exception(
-                        "[Sync API] Falha ao gravar estado ERROR no S3 (user=%r)",
+                        "[Worker] Falha ao gravar estado ERROR no S3 (user=%r)",
                         payload.user,
                     )
             raise
