@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 AGENT_RUNNERS: dict[str, Callable[[ChatGPTChat, TripContext], str]] = {
-    hotel_service.AGENT_ID: hotel_service.run,
+    #hotel_service.AGENT_ID: hotel_service.run,
     tips_service.AGENT_ID: tips_service.run,
     attractions_service.AGENT_ID: attractions_service.run,
     routization_service.AGENT_ID: routization_service.run,
@@ -46,7 +46,7 @@ class RouterService:
 
     #: Ordem lógica usada só em meta/logs; edite ``execute_sequence`` para mudar o fluxo real.
     DEFAULT_SEQUENCE_ORDER: ClassVar[list[str]] = [
-        hotel_service.AGENT_ID,
+        #hotel_service.AGENT_ID,
         tips_service.AGENT_ID,
         attractions_service.AGENT_ID,
         routization_service.AGENT_ID,
@@ -98,9 +98,9 @@ class RouterService:
         response_attractions = self._invoke_agent(
             ctx, attractions_service.AGENT_ID, "attractions.txt", on_agent_complete
         )
-        response_hotels = self._invoke_agent(
-            ctx, hotel_service.AGENT_ID, "hotel.txt", on_agent_complete
-        )
+       # response_hotels = self._invoke_agent(
+       #     ctx, hotel_service.AGENT_ID, "hotel.txt", on_agent_complete
+        #)
         response_tips = self._invoke_agent(
             ctx, tips_service.AGENT_ID, "tips.txt", on_agent_complete
         )
@@ -116,7 +116,7 @@ class RouterService:
 
         logger.debug(
             "execute_sequence tamanhos (chars) hotels=%d tips=%d attractions=%d routization=%d maps=%d",
-            len(response_hotels),
+            #len(response_hotels),
             len(response_tips),
             len(response_attractions),
             len(response_routization),
