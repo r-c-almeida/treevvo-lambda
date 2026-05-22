@@ -3,7 +3,7 @@
     {
       "messageId": "00000000-0000-0000-0000-000000000001",
       "receiptHandle": "AQEBexample...",
-      "body": "{\"user\":\"local-test\",\"folder\":\"MinhaPasta\",\"city\":\"\",\"date_start\":\"2026-05-01\",\"date_end\":\"2026-05-03\",\"complementary_info\":\"\"}",
+      "body": "{\"user\":\"local-test\",\"id\":\"a550e8400-e29b-41d4-a716-446655440001\",\"folder\":\"MinhaPasta\",\"city\":\"\",\"date_start\":\"2026-05-01\",\"date_end\":\"2026-05-03\",\"complementary_info\":\"\"}",
       "attributes": {
         "ApproximateReceiveCount": "1",
         "SentTimestamp": "1523232000000",

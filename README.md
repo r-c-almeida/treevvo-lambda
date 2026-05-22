@@ -4,18 +4,22 @@ Serviço de **geração de roteiros de viagem** com LLM (OpenAI), empacotado par
 
 ## O que ele faz
 
-1. **Entrada:** mensagens na fila SQS cujo corpo é um JSON com os mesmos campos da geração assíncrona (`user`, `folder`, `city`, `date_start`, `date_end`, `complementary_info`). O handler está em `lambda_function.py` → `lambda_handler`.
+1. **Entrada:** mensagens SQS com JSON: `user`, **`id`** (**UUID** do roteiro, igual ao item em `profile.json`), `folder`, `city`, `date_start`, `date_end`, `complementary_info`. Handler: `lambda_function.lambda_handler`.
 
-2. **Processamento:** para cada mensagem, o worker (`source/sqs_generate_worker.py`) valida o payload, instancia `GenerateScriptService`, que:
+2. **Perfil S3:** com `S3_TRIP_PROFILE_BUCKET`, o produtor deve criar em `trips[]` um objeto com o mesmo **`id`** (**UUID**) e status **`PENDING`** antes de enfileirar. A Lambda **atualiza esse objeto** pelo `id` (não adiciona entrada nova ao array).
+
+3. **Processamento:** o worker (`source/sqs_generate_worker.py`) valida o payload e o `GenerateScriptService`:
    - resolve a pasta de transcrições em relação à raiz configurada (`TRANSCRIPTS_ROOT` ou pasta do pacote no Lambda);
    - lê arquivos locais `transcricao*.txt` **se existirem** (se não houver, o pipeline segue sem transcrições);
    - executa `Application` → `RouterService`, orquestrando vários agentes (atrações, hotéis, dicas, roteirização, mapas, etc.) usando as instruções em `docs/instructions/*.txt` e o cliente em `source/llms/chatgpt_chat.py`.
 
-3. **Saída:** o texto final do roteiro fica **em memória** (não grava arquivos `.txt` locais). Se `S3_TRIP_PROFILE_BUCKET` estiver definido, o resultado pode ser persistido no **S3** via `TripProfileS3Service` (perfil e viagens).
+4. **S3 durante a execução (se bucket ativo):** ao iniciar o job, o item em `trips[]` vai para **`CREATING`** com **`generate_start_date`** (UTC ISO). Ao terminar com sucesso: **`FINISHED`**, **`generate_end_date`** e `file_generated`; em erro: **`ERROR`**, **`generate_end_date`** e `error_message`.
 
-4. **Erros:** falhas por mensagem são registradas nos **logs** (ex.: CloudWatch). Em triggers com **Report batch item failures**, retornos com `batchItemFailures` permitem retry só das mensagens que falharam.
+5. **Saída:** o texto final do roteiro fica **em memória**. Com S3, `TripProfileS3Service` atualiza `profile.json` conforme os status acima e grava o `.txt` da viagem quando aplicável.
 
-5. **Variáveis de ambiente:** exemplos e comentários em `.env.example` (OpenAI, SQS, S3, região, etc.).
+6. **Erros:** falhas por mensagem aparecem nos **logs** (ex.: CloudWatch). Em triggers com **Report batch item failures**, retornos com `batchItemFailures` permitem retry só das mensagens que falharam.
+
+7. **Variáveis de ambiente:** exemplos e comentários em `.env.example` (OpenAI, SQS, S3, região, etc.).
 
 ## Deploy na AWS Lambda
 

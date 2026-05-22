@@ -39,6 +39,27 @@ def _iso_z(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def _now_utc_iso() -> str:
+    return _iso_z(datetime.now(timezone.utc))
+
+
+def _profile_trip_db_id(entry: Any) -> str:
+    """Identificador no item ``trips`` (campo ``id``; aceita ``trip_id`` só em registros legados)."""
+    if not isinstance(entry, dict):
+        return ""
+    return (entry.get("id") or entry.get("trip_id") or "").strip()
+
+
+def _find_trip_index(trips: list[Any], *, item_id: str) -> int:
+    tid = (item_id or "").strip()
+    if not tid:
+        return -1
+    for i, item in enumerate(trips):
+        if _profile_trip_db_id(item) == tid:
+            return i
+    return -1
+
+
 def _make_s3_client() -> Any:
     kwargs: dict[str, Any] = {}
     region = _resolve_s3_region()
@@ -130,6 +151,39 @@ class TripProfileS3Service:
             len(data.get("trips") or []),
         )
 
+    def mark_trip_creation_started(self, payload: GenerateScriptPayload) -> None:
+        """
+        Ao iniciar a geração: atualiza o item ``trips`` com o mesmo ``id``,
+        status ``CREATING`` e ``generate_start_date`` em UTC ISO.
+        """
+        user_prefix = self._user_prefix(payload)
+        profile_key = f"{user_prefix}/profile.json"
+        self._ensure_user_prefix(user_prefix)
+        profile = self._load_profile(profile_key)
+        trips = profile.get("trips")
+        if not isinstance(trips, list):
+            trips = []
+        idx = _find_trip_index(trips, item_id=payload.id)
+        if idx < 0:
+            raise ValueError(
+                f"Roteiro id={payload.id!r} não encontrado em profile.json; "
+                "o produtor deve criar o item com status PENDING antes de enfileirar."
+            )
+        entry = dict(trips[idx]) if isinstance(trips[idx], dict) else {}
+        entry["id"] = payload.id
+        entry["status"] = TripRecordStatus.CREATING.value
+        entry["generate_start_date"] = _now_utc_iso()
+        trips[idx] = entry
+        out_profile = dict(profile)
+        out_profile["user_id"] = (payload.user or "").strip()
+        out_profile["trips"] = trips
+        self._save_profile(profile_key, out_profile)
+        logger.info(
+            "[S3] Roteiro marcado como CREATING | id=%s | key=%s",
+            payload.id,
+            profile_key,
+        )
+
     def persist_after_generation(
         self,
         payload: GenerateScriptPayload,
@@ -138,19 +192,21 @@ class TripProfileS3Service:
         success: bool,
         trip_text: str,
         error_message: str | None = None,
-    ) -> dict[str, str] | None:
+    ) -> dict[str, str]:
         """
-        Ao final do processamento: atualiza ``profile.json`` e, se sucesso, grava TXT em ``trips/``.
+        Ao final do processamento: atualiza **o item existente** em ``trips`` (pelo ``id``)
+        em ``profile.json`` e, se sucesso, grava TXT em ``trips/``.
 
-        Retorna chaves S3 gravadas (profile + trip) ou ``None`` se nada foi feito.
+        Retorna chaves S3 gravadas (profile + trip opcional).
         """
         user_prefix = self._user_prefix(payload)
         profile_key = f"{user_prefix}/profile.json"
         region = _resolve_s3_region()
         logger.info(
-            "[S3] Iniciando persistência | bucket=%s | regiao=%s | user_id=%r | prefixo_s3=%s | destino=%r | sucesso=%s",
+            "[S3] Iniciando persistência | bucket=%s | regiao=%s | id=%r | user_id=%r | prefixo_s3=%s | destino=%r | sucesso=%s",
             self._bucket,
             region or "(default boto)",
+            payload.id,
             (payload.user or "").strip(),
             user_prefix,
             (destination or "").strip(),
@@ -172,8 +228,19 @@ class TripProfileS3Service:
         start_at = _iso_z(_utc_day_start(payload.date_start))
         end_at = _iso_z(_utc_day_end(payload.date_end))
 
+        idx = _find_trip_index(trips, item_id=payload.id)
+        if idx < 0:
+            raise ValueError(
+                f"Roteiro id={payload.id!r} não encontrado em profile.json ao finalizar."
+            )
+
+        entry = dict(trips[idx]) if isinstance(trips[idx], dict) else {}
+        entry["id"] = payload.id
+        entry["destination"] = (destination or "").strip()
+        entry["start_at"] = start_at
+        entry["end_at"] = end_at
+
         file_generated: str | None = None
-        status = TripRecordStatus.OK if success else TripRecordStatus.ERROR
         err_msg: str | None = None if success else (error_message or "Erro desconhecido")
 
         if success and trip_text is not None:
@@ -193,20 +260,22 @@ class TripProfileS3Service:
                 len(trip_text.encode("utf-8")),
             )
 
-        entry: dict[str, Any] = {
-            "destination": (destination or "").strip(),
-            "start_at": start_at,
-            "end_at": end_at,
-            "status": status.value,
-            "error_message": err_msg,
-            "file_generated": file_generated,
-        }
-        trips.append(entry)
+        end_stamp = _now_utc_iso()
+        if success:
+            entry["status"] = TripRecordStatus.FINISHED.value
+            entry["generate_end_date"] = end_stamp
+            entry["error_message"] = None
+            entry["file_generated"] = file_generated
+        else:
+            entry["status"] = TripRecordStatus.ERROR.value
+            entry["generate_end_date"] = end_stamp
+            entry["error_message"] = err_msg
 
-        out_profile: dict[str, Any] = {
-            "user_id": (payload.user or "").strip(),
-            "trips": trips,
-        }
+        trips[idx] = entry
+
+        out_profile = dict(profile)
+        out_profile["user_id"] = (payload.user or "").strip()
+        out_profile["trips"] = trips
         self._save_profile(profile_key, out_profile)
 
         out_keys = {
@@ -214,8 +283,9 @@ class TripProfileS3Service:
             "trip_txt": file_generated and f"{user_prefix}/{file_generated}" or "",
         }
         logger.info(
-            "[S3] Persistência concluída | status_viagem=%s | chaves=%s",
-            status.value,
+            "[S3] Persistência concluída | id=%s | status_viagem=%s | chaves=%s",
+            payload.id,
+            entry["status"],
             out_keys,
         )
         return out_keys

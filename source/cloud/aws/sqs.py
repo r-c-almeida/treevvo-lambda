@@ -96,8 +96,9 @@ class GenerateTripQueueService:
         body = json.dumps(payload.as_json_dict(), ensure_ascii=False)
         region = _resolve_sqs_region(self._queue_url)
         logger.info(
-            "[SQS] Enviando mensagem | regiao=%s | user=%r | folder=%r | city=%r | corpo_chars=%d | fila=%s",
+            "[SQS] Enviando mensagem | regiao=%s | id=%r | user=%r | folder=%r | city=%r | corpo_chars=%d | fila=%s",
             region or "(default boto)",
+            payload.id,
             payload.user,
             payload.folder,
             payload.city,

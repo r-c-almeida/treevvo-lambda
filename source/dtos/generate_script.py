@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any
@@ -11,11 +12,27 @@ def _format_br_date(d: date) -> str:
     return f"{d.day:02d}/{d.month:02d}/{d.year}"
 
 
+def _parse_roteiro_uuid(raw: str) -> str:
+    """Valida UUID e normaliza para string canônica (RFC 4122)."""
+    s = (raw or "").strip()
+    if not s:
+        raise ValueError("Informe o identificador do roteiro (campo id).")
+    try:
+        return str(uuid.UUID(s))
+    except ValueError:
+        raise ValueError(
+            "O campo id deve ser um UUID válido (ex.: 550e8400-e29b-41d4-a716-446655440000)."
+        ) from None
+
 @dataclass(frozen=True)
 class GenerateScriptPayload:
-    """Entrada já validada a partir do corpo JSON da requisição."""
+    """Entrada já validada a partir do corpo JSON da requisição.
+
+    O campo ``id`` identifica o roteiro em ``profile.json`` e deve ser um **UUID** (RFC 4122).
+    """
 
     user: str
+    id: str
     folder: str
     city: str
     date_start: date
@@ -35,6 +52,7 @@ class GenerateScriptPayload:
         user = (data.get("user") or "").strip()
         if not user:
             raise ValueError("Informe o identificador do usuário (campo user).")
+        rid = _parse_roteiro_uuid(data.get("id") or "")
         folder = (data.get("folder") or "").strip()
         city = (data.get("city") or "").strip()
         complementary_info = (data.get("complementary_info") or "").strip()
@@ -55,6 +73,7 @@ class GenerateScriptPayload:
 
         return cls(
             user=user,
+            id=rid,
             folder=folder,
             city=city,
             date_start=d0,
@@ -66,6 +85,7 @@ class GenerateScriptPayload:
         """Mesmo formato do corpo JSON da API (para fila / workers)."""
         return {
             "user": self.user,
+            "id": self.id,
             "folder": self.folder,
             "city": self.city,
             "date_start": self.date_start.isoformat(),

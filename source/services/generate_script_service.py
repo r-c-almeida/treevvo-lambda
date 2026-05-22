@@ -53,12 +53,16 @@ class GenerateScriptService:
         city = payload.city or name.replace("_", " ").strip()
 
         logger.info(
-            "GenerateScriptService parâmetros city=%r days=%s dates_note=%r complementary_info_len=%d",
+            "GenerateScriptService parâmetros id=%r city=%r days=%s dates_note=%r complementary_info_len=%d",
+            payload.id,
             city,
             payload.days,
             payload.dates_note,
             len(payload.complementary_info),
         )
+
+        if self._trip_profile_s3 is not None:
+            self._trip_profile_s3.mark_trip_creation_started(payload)
 
         app_job = Application(base_dir=target)
         s3_keys: dict[str, str] | None = None

@@ -6,6 +6,9 @@ from enum import Enum
 
 
 class TripRecordStatus(str, Enum):
-    OK = "OK"
+    """Ciclo: PENDING (criado pelo produtor) → CREATING (Lambda iniciou) → FINISHED ou ERROR."""
+
+    PENDING = "PENDING"
     CREATING = "CREATING"
+    FINISHED = "FINISHED"
     ERROR = "ERROR"
