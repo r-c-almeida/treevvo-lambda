@@ -1,5 +1,5 @@
 """
-Aplicação principal: lê transcrições locais e orquestra agentes via RouterService.
+Aplicação principal: lê transcrições locais e chama ``TripPipeline`` (nome legado ``RouterService``).
 
 O texto final do roteiro fica apenas em memória (``PipelineResult.final_text``); não há gravação em disco.
 """

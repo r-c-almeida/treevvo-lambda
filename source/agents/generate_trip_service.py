@@ -1,21 +1,65 @@
-"""Agente de roteirização: consolida saídas anteriores e monta o roteiro da viagem."""
+"""Agente final: consolida roteiro preservando links e mapas.
+
+``hotel``: vazio no pipeline atual (HotelAgent desativado). Ver ``trip_pipeline`` / ``hotel_service``.
+"""
 
 from __future__ import annotations
 
-from typing import ClassVar
+from pathlib import Path
 
-from source.agents.attractions_service import AttractionsAgent
-from source.agents.base_agent import BaseTripAgent
-from source.agents.hotel_service import HotelAgent
-from source.agents.tips_service import TipsAgent
-from source.agents.maps_service import MapsAgent
-from source.agents.trip_types import TripContext
+from source.agents.service_base import ServiceBase, instructions_path
 
 
-class GenerateTripAgent(BaseTripAgent):
-    AGENT_ID = "generate_trip"
+class GenerateTripAgent(ServiceBase):
+    @property
+    def instruction_file_path(self) -> Path:
+        return instructions_path("generate_trip.txt")
 
-    USER_PROMPT_TEMPLATE: ClassVar[str] = """\
+    def run(
+        self,
+        city: str,
+        days: int,
+        dates_note: str,
+        complementary_info: str,
+        transcripts: str,
+        *,
+        hotel: str = "",
+        tips: str,
+        attractions: str,
+        maps: str,
+    ) -> str:
+        return self._chat.chat(
+            self._build_prompt(
+                city=city,
+                days=days,
+                dates_note=dates_note,
+                complementary_info=complementary_info,
+                transcripts=transcripts,
+                hotel=self._nz(hotel),
+                tips=self._nz(tips),
+                attractions=self._nz(attractions),
+                maps=self._nz(maps),
+            )
+        )
+
+    @staticmethod
+    def _nz(s: str) -> str:
+        t = (s or "").strip()
+        return t if t else "(vazio)"
+
+    def _build_prompt(
+        self,
+        city: str,
+        days: int,
+        dates_note: str,
+        complementary_info: str,
+        transcripts: str,
+        hotel: str,
+        tips: str,
+        attractions: str,
+        maps: str,
+    ) -> str:
+        return f"""\
 Cidade: {city}
 Dias de viagem: {days}
 Datas / período: {dates_note}
@@ -41,7 +85,7 @@ Responda em português.
 --- Transcrições ---
 {transcripts}
 
---- Sugestões de hospedagem (agente hotéis) ---
+--- Sugestões de hospedagem (agente hotéis — DESATIVADO no pipeline atual) ---
 {hotel}
 
 --- Dicas da cidade (agente dicas) ---
@@ -53,24 +97,3 @@ Responda em português.
 --- Mapas (agente maps) ---
 {maps}
 """
-
-    @classmethod
-    def build_user_prompt(cls, ctx: TripContext) -> str:
-        t = ctx.trip
-        return cls.USER_PROMPT_TEMPLATE.format(
-            city=t.city.strip(),
-            days=t.days,
-            dates_note=(t.dates_note or "").strip() or "(não informado)",
-            complementary_info=(t.complementary_info or "").strip() or "(não informado)",
-            transcripts=ctx.transcripts_block.strip() or "(nenhuma transcrição)",
-            hotel=ctx.agent_outputs.get(HotelAgent.AGENT_ID, "").strip() or "(vazio)",
-            tips=ctx.agent_outputs.get(TipsAgent.AGENT_ID, "").strip() or "(vazio)",
-            attractions=ctx.agent_outputs.get(AttractionsAgent.AGENT_ID, "").strip() or "(vazio)",
-            maps=ctx.agent_outputs.get(MapsAgent.AGENT_ID, "").strip() or "(vazio)"
-        )
-
-
-AGENT_ID = GenerateTripAgent.AGENT_ID
-USER_PROMPT_TEMPLATE = GenerateTripAgent.USER_PROMPT_TEMPLATE
-run = GenerateTripAgent.run
-build_user_prompt = GenerateTripAgent.build_user_prompt

@@ -1,166 +1,168 @@
 """
-Orquestração central do fluxo de agentes.
+Encadeia os agentes: instancia um passo por vez e devolve ``PipelineResult``.
 
-A ordem de execução fica em ``RouterService.execute_sequence``: chamadas explícitas,
-uma por vez, com retornos em variáveis distintas para inspeção e debug.
-O miolo pode ser repensado depois; ``run`` apenas prepara o contexto e monta o resultado.
+``RouterService`` é alias de ``TripPipeline`` (compatível com código que ainda usa o nome antigo).
+
+O passo de **hotel** está comentado propositalmente; quando for reativar, inclua chamada antes da
+roteirização no método ``TripPipeline.run`` e passe ``hotel=texto`` aos agentes seguintes.
+
+Importação apenas para referência (não usar no pipeline atual):
+  # from source.agents.hotel_service import HotelAgent
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Callable, ClassVar
+from typing import Callable
 
-from source.agents import (
-    attractions_service,
-    hotel_service,
-    maps_service,
-    routization_service,
-    generate_trip_service,
-    tips_service,
-)
+from source.agents.attractions_service import AttractionsAgent
+from source.agents.generate_trip_service import GenerateTripAgent
+from source.agents.maps_service import MapsAgent
+from source.agents.routization_service import RoutizationAgent
+from source.agents.tips_service import TipsAgent
+
+# from source.agents.hotel_service import HotelAgent  # desativado no pipeline atual
+
 from source.agents.trip_types import PipelineResult, TripContext, TripInput
-from source.llms.chatgpt_chat import ChatGPTChat
 from source.logging_setup import setup_logging
-
-# Chamado após cada agente com o texto produzido.
-OnAgentComplete = Callable[[str, str, TripContext], None]
 
 logger = logging.getLogger(__name__)
 
+OnStepComplete = Callable[[str, str, TripContext], None]
 
-AGENT_RUNNERS: dict[str, Callable[[ChatGPTChat, TripContext], str]] = {
-    #hotel_service.AGENT_ID: hotel_service.run,
-    tips_service.AGENT_ID: tips_service.run,
-    attractions_service.AGENT_ID: attractions_service.run,
-    routization_service.AGENT_ID: routization_service.run,
-    maps_service.AGENT_ID: maps_service.run,
-    generate_trip_service.AGENT_ID: generate_trip_service.run,
-}
+# Nome anterior usado em ``application.py``
+OnAgentComplete = OnStepComplete
 
 
-class RouterService:
-    """
-    Define o fluxo em ``execute_sequence`` (variáveis explícitas por etapa).
-    """
+class TripPipeline:
+    """Constrói os agentes uma vez e expõe ``run`` até produzir o texto final."""
 
-    #: Ordem lógica usada só em meta/logs; edite ``execute_sequence`` para mudar o fluxo real.
-    DEFAULT_SEQUENCE_ORDER: ClassVar[list[str]] = [
-        #hotel_service.AGENT_ID,
-        tips_service.AGENT_ID,
-        attractions_service.AGENT_ID,
-        routization_service.AGENT_ID,
-        maps_service.AGENT_ID,
-        generate_trip_service.AGENT_ID,
-    ]
-
-    def _invoke_agent(
-        self,
-        ctx: TripContext,
-        agent_id: str,
-        instruction_file: str,
-        on_agent_complete: OnAgentComplete | None,
-    ) -> str:
-        """Executa um agente, grava em ``ctx.agent_outputs`` e dispara callback opcional."""
-        if agent_id not in AGENT_RUNNERS:
-            raise ValueError(f"Agente desconhecido: {agent_id!r}")
-        logger.info(
-            "Router agente: agent_id=%s instruction_file=%s",
-            agent_id,
-            instruction_file,
-        )
-        chat = ChatGPTChat.from_instruction_file(instruction_file)
-        try:
-            text = AGENT_RUNNERS[agent_id](chat, ctx)
-        except Exception:
-            logger.exception(
-                "Router falha no agente agent_id=%s instruction_file=%s",
-                agent_id,
-                instruction_file,
-            )
-            raise
-        ctx.agent_outputs[agent_id] = text
-        if on_agent_complete:
-            on_agent_complete(agent_id, text, ctx)
-        return text
-
-    def execute_sequence(
-        self,
-        ctx: TripContext,
-        *,
-        on_agent_complete: OnAgentComplete | None = None,
-    ) -> str:
-        """
-        **Edite aqui a ordem e o uso dos retornos.** Cada etapa fica em uma variável própria.
-
-        O valor de retorno deste método vira ``PipelineResult.final_text`` (normalmente o último passo).
-        """
-        response_attractions = self._invoke_agent(
-            ctx, attractions_service.AGENT_ID, "attractions.txt", on_agent_complete
-        )
-       # response_hotels = self._invoke_agent(
-       #     ctx, hotel_service.AGENT_ID, "hotel.txt", on_agent_complete
-        #)
-        response_tips = self._invoke_agent(
-            ctx, tips_service.AGENT_ID, "tips.txt", on_agent_complete
-        )
-        response_routization = self._invoke_agent(
-            ctx, routization_service.AGENT_ID, "routization.txt", on_agent_complete
-        )
-        response_maps = self._invoke_agent(
-            ctx, maps_service.AGENT_ID, "maps.txt", on_agent_complete
-        )
-        response_generate_trip = self._invoke_agent(
-            ctx, generate_trip_service.AGENT_ID, "generate_trip.txt", on_agent_complete
-        )
-
-        logger.debug(
-            "execute_sequence tamanhos (chars) hotels=%d tips=%d attractions=%d routization=%d maps=%d",
-            #len(response_hotels),
-            len(response_tips),
-            len(response_attractions),
-            len(response_routization),
-            len(response_maps),
-        )
-
-
-        return response_generate_trip
+    def __init__(self) -> None:
+        self.attractions = AttractionsAgent()
+        self.tips = TipsAgent()
+        # self.hotels = HotelAgent()  # desativado: ver docstring deste módulo
+        self.routization = RoutizationAgent()
+        self.maps = MapsAgent()
+        self.generate_trip = GenerateTripAgent()
 
     def run(
         self,
         trip: TripInput,
         transcripts_block: str,
         *,
-        on_agent_complete: OnAgentComplete | None = None,
+        on_step_complete: OnStepComplete | None = None,
+        on_agent_complete: OnStepComplete | None = None,
     ) -> PipelineResult:
+        """``on_agent_complete`` é apenas outro nome para ``on_step_complete``."""
+        cb = on_step_complete or on_agent_complete
+
         setup_logging()
+        transcripts_safe = transcripts_block.strip() or "(nenhuma transcrição)"
+        city = trip.city.strip()
+        days = trip.days
+        dates_note = (trip.dates_note or "").strip() or "(não informado)"
+        complementary_info = (trip.complementary_info or "").strip() or "(não informado)"
+        ctx = TripContext(trip=trip, transcripts_block=transcripts_block)
+        outputs: dict[str, str] = {}
+
         logger.info(
-            "RouterService.run início city=%r days=%s dates_note=%r complementary_info_len=%d transcript_chars=%d",
-            trip.city,
-            trip.days,
-            trip.dates_note,
-            len(trip.complementary_info or ""),
+            "TripPipeline.run city=%r days=%s complementary_chars=%d transcript_chars=%d",
+            city,
+            days,
+            len(complementary_info),
             len(transcripts_block),
         )
-        ctx = TripContext(trip=trip, transcripts_block=transcripts_block)
+
+        def notify(step: str, text: str) -> None:
+            outputs[step] = text
+            ctx.agent_outputs[step] = text
+            if cb:
+                cb(step, text, ctx)
 
         try:
-            final_text = self.execute_sequence(ctx, on_agent_complete=on_agent_complete)
+            attractions_text = self.attractions.run(
+                city=city,
+                days=days,
+                dates_note=dates_note,
+                complementary_info=complementary_info,
+                transcripts=transcripts_safe,
+            )
+            notify("attractions", attractions_text)
+
+            tips_text = self.tips.run(
+                city=city,
+                days=days,
+                dates_note=dates_note,
+                complementary_info=complementary_info,
+                transcripts=transcripts_safe,
+            )
+            notify("tips", tips_text)
+
+            # --- Hotel (DESATIVADO) ---
+            # hotel_text = self.hotels.run(
+            #     city=city,
+            #     days=days,
+            #     dates_note=dates_note,
+            #     complementary_info=complementary_info,
+            #     transcripts=transcripts_safe,
+            # )
+            # notify("hotels", hotel_text)
+            hotel_text = ""
+
+            routization_text = self.routization.run(
+                city=city,
+                days=days,
+                dates_note=dates_note,
+                complementary_info=complementary_info,
+                transcripts=transcripts_safe,
+                hotel=hotel_text,
+                tips=tips_text,
+                attractions=attractions_text,
+            )
+            notify("routization", routization_text)
+
+            maps_text = self.maps.run(
+                city=city,
+                days=days,
+                complementary_info=complementary_info,
+                route_plan=routization_text,
+            )
+            notify("maps", maps_text)
+
+            final_text = self.generate_trip.run(
+                city=city,
+                days=days,
+                dates_note=dates_note,
+                complementary_info=complementary_info,
+                transcripts=transcripts_safe,
+                hotel=hotel_text,
+                tips=tips_text,
+                attractions=attractions_text,
+                maps=maps_text,
+            )
+            notify("generate_trip", final_text)
         except Exception:
-            logger.exception("RouterService.run interrompido em execute_sequence")
+            logger.exception("TripPipeline.run interrompido")
             raise
 
-        meta = {
-            "sequence_order_hint": list(type(self).DEFAULT_SEQUENCE_ORDER),
-            "agent_outputs_keys": list(ctx.agent_outputs.keys()),
-        }
+        meta = {"steps": list(outputs.keys())}
         logger.info(
-            "RouterService.run sucesso final_chars=%d agents=%s",
-            len(final_text or ""),
-            list(ctx.agent_outputs.keys()),
+            "TripPipeline.run ok final_chars=%d steps=%s",
+            len(final_text),
+            meta["steps"],
         )
         return PipelineResult(
-            agent_outputs=dict(ctx.agent_outputs),
+            agent_outputs=dict(outputs),
             final_text=final_text,
             meta=meta,
         )
+
+
+RouterService = TripPipeline
+
+__all__ = [
+    "OnAgentComplete",
+    "OnStepComplete",
+    "RouterService",
+    "TripPipeline",
+]

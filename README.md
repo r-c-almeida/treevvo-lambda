@@ -11,7 +11,7 @@ Serviço de **geração de roteiros de viagem** com LLM (OpenAI), empacotado par
 3. **Processamento:** o worker (`source/sqs_generate_worker.py`) valida o payload e o `GenerateScriptService`:
    - resolve a pasta de transcrições em relação à raiz configurada (`TRANSCRIPTS_ROOT` ou pasta do pacote no Lambda);
    - lê arquivos locais `transcricao*.txt` **se existirem** (se não houver, o pipeline segue sem transcrições);
-   - executa `Application` → `RouterService`, orquestrando vários agentes (atrações, hotéis, dicas, roteirização, mapas, etc.) usando as instruções em `docs/instructions/*.txt` e o cliente em `source/llms/chatgpt_chat.py`.
+   - executa `Application` → `TripPipeline` (alias ``RouterService``): agentes como classes com `ServiceBase` + ``OpenAIChat`` (`source/llms/open_ai_chat.py`), instruções em `docs/instructions/*.txt`. **Hotels** ficam preparados mas fora da sequência padrão.
 
 4. **S3 durante a execução (se bucket ativo):** ao iniciar o job, o item em `trips[]` vai para **`CREATING`** com **`generate_start_date`** (UTC ISO). Ao terminar com sucesso: **`FINISHED`**, **`generate_end_date`** e `file_generated`; em erro: **`ERROR`**, **`generate_end_date`** e `error_message`.
 

@@ -1,20 +1,65 @@
-"""Agente de roteirização: consolida saídas anteriores e monta o roteiro da viagem."""
+"""Agente que monta roteiro dia a dia com dicas, atrações e (opcional) hotéis.
+
+Parâmetro ``hotel``: hoje sempre vazio porque o passo ``HotelAgent`` está desativado no pipeline.
+Quando ligar hotéis, passe o texto do agente aqui nas chamadas desde ``trip_pipeline``.
+"""
 
 from __future__ import annotations
 
-from typing import ClassVar
+from pathlib import Path
 
-from source.agents.attractions_service import AttractionsAgent
-from source.agents.base_agent import BaseTripAgent
-from source.agents.hotel_service import HotelAgent
-from source.agents.tips_service import TipsAgent
-from source.agents.trip_types import TripContext
+from source.agents.service_base import ServiceBase, instructions_path
 
 
-class RoutizationAgent(BaseTripAgent):
-    AGENT_ID = "routization"
+class RoutizationAgent(ServiceBase):
+    @property
+    def instruction_file_path(self) -> Path:
+        return instructions_path("routization.txt")
 
-    USER_PROMPT_TEMPLATE: ClassVar[str] = """\
+    def run(
+        self,
+        city: str,
+        days: int,
+        dates_note: str,
+        complementary_info: str,
+        transcripts: str,
+        *,
+        # hotel_desativado: ver comentários em ``trip_pipeline`` / ``hotel_service``.
+        hotel: str = "",
+        tips: str,
+        attractions: str,
+    ) -> str:
+        return self._chat.chat(
+            self._build_prompt(
+                city=city,
+                days=days,
+                dates_note=dates_note,
+                complementary_info=complementary_info,
+                transcripts=transcripts,
+                hotel=self._nz(hotel),
+                tips=self._nz(tips),
+                attractions=self._nz(attractions),
+            )
+        )
+
+    @staticmethod
+    def _nz(s: str) -> str:
+        t = (s or "").strip()
+        return t if t else "(vazio)"
+
+    def _build_prompt(
+        self,
+        city: str,
+        days: int,
+        dates_note: str,
+        complementary_info: str,
+        transcripts: str,
+        hotel: str,
+        tips: str,
+        attractions: str,
+    ) -> str:
+        # Mantém placeholder de hotel para quando o HotelAgent voltar ao pipeline.
+        return f"""\
 Cidade: {city}
 Dias de viagem: {days}
 Datas / período: {dates_note}
@@ -34,7 +79,7 @@ Se a distância entre os pontos turisticos for longa, verifique se há históric
 Se houver lista de pontos turísticos, foque na roteirização entre eles.
 Se houver informação de hotel, considere o ponto de partida inicial e final como o hotel.
 Se houver mais de um hotel, considere o tempo de deslocamento entre eles durante a data de troca de hoteis.
-Se for informado uma lista de pontos turísticos, você deve priorizar a roteirização entre eles garantindo que sejam visitados. Caso não seja possível visitar todos eles, priorize os que estão próximos um do outro. 
+Se for informado uma lista de pontos turísticos, você deve priorizar a roteirização entre eles garantindo que sejam visitados. Caso não seja possível visitar todos eles, priorize os que estão próximos um do outro.
 Esta lista estará em informações complementares.
 
 Responda em português.
@@ -42,7 +87,7 @@ Responda em português.
 --- Transcrições ---
 {transcripts}
 
---- Sugestões de hospedagem (agente hotéis) ---
+--- Sugestões de hospedagem (agente hotéis — DESATIVADO no pipeline atual) ---
 {hotel}
 
 --- Dicas da cidade (agente dicas) ---
@@ -51,24 +96,3 @@ Responda em português.
 --- Atrações (agente atrações) ---
 {attractions}
 """
-
-    @classmethod
-    def build_user_prompt(cls, ctx: TripContext) -> str:
-        t = ctx.trip
-        return cls.USER_PROMPT_TEMPLATE.format(
-            city=t.city.strip(),
-            days=t.days,
-            dates_note=(t.dates_note or "").strip() or "(não informado)",
-            complementary_info=(t.complementary_info or "").strip() or "(não informado)",
-            transcripts=ctx.transcripts_block.strip() or "(nenhuma transcrição)",
-            hotel=ctx.agent_outputs.get(HotelAgent.AGENT_ID, "").strip() or "(vazio)",
-            tips=ctx.agent_outputs.get(TipsAgent.AGENT_ID, "").strip() or "(vazio)",
-            attractions=ctx.agent_outputs.get(AttractionsAgent.AGENT_ID, "").strip()
-            or "(vazio)",
-        )
-
-
-AGENT_ID = RoutizationAgent.AGENT_ID
-USER_PROMPT_TEMPLATE = RoutizationAgent.USER_PROMPT_TEMPLATE
-run = RoutizationAgent.run
-build_user_prompt = RoutizationAgent.build_user_prompt
