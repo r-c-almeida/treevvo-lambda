@@ -2,13 +2,42 @@
 
 from __future__ import annotations
 
-from source.agents.base_agent import SimpleTranscriptAgent
+from pathlib import Path
+
+from source.agents.service_base import ServiceBase, instructions_path
 
 
-class TipsAgent(SimpleTranscriptAgent):
-    AGENT_ID = "tips"
+class TipsAgent(ServiceBase):
+    @property
+    def instruction_file_path(self) -> Path:
+        return instructions_path("tips.txt")
 
-    USER_PROMPT_TEMPLATE = """\
+    def run(
+        self,
+        city: str,
+        days: int,
+        dates_note: str,
+        complementary_info: str,
+        transcripts: str,
+    ) -> str:
+        prompt = self._build_prompt(
+            city=city,
+            days=days,
+            dates_note=dates_note,
+            complementary_info=complementary_info,
+            transcripts=transcripts,
+        )
+        return self._chat.chat(prompt)
+
+    def _build_prompt(
+        self,
+        city: str,
+        days: int,
+        dates_note: str,
+        complementary_info: str,
+        transcripts: str,
+    ) -> str:
+        return f"""\
 Cidade: {city}
 Dias de viagem: {days}
 Datas / período: {dates_note}
@@ -20,9 +49,3 @@ Responda em português.
 --- Transcrições ---
 {transcripts}
 """
-
-
-AGENT_ID = TipsAgent.AGENT_ID
-USER_PROMPT_TEMPLATE = TipsAgent.USER_PROMPT_TEMPLATE
-run = TipsAgent.run
-build_user_prompt = TipsAgent.build_user_prompt

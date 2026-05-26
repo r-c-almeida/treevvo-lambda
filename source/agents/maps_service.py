@@ -1,18 +1,41 @@
-"""Agente de mapas: usa o roteiro consolidado para sugerir organização espacial / mapas."""
+"""Agente de mapas a partir do roteiro já montado."""
 
 from __future__ import annotations
 
-from typing import ClassVar
+from pathlib import Path
 
-from source.agents.base_agent import BaseTripAgent
-from source.agents.routization_service import RoutizationAgent
-from source.agents.trip_types import TripContext
+from source.agents.service_base import ServiceBase, instructions_path
 
 
-class MapsAgent(BaseTripAgent):
-    AGENT_ID = "maps"
+class MapsAgent(ServiceBase):
+    @property
+    def instruction_file_path(self) -> Path:
+        return instructions_path("maps.txt")
 
-    USER_PROMPT_TEMPLATE: ClassVar[str] = """\
+    def run(
+        self,
+        city: str,
+        days: int,
+        complementary_info: str,
+        route_plan: str,
+    ) -> str:
+        prompt = self._build_prompt(
+            city=city,
+            days=days,
+            complementary_info=complementary_info,
+            route_plan=(route_plan or "").strip()
+            or "(vazio — execute a roteirização antes)",
+        )
+        return self._chat.chat(prompt)
+
+    def _build_prompt(
+        self,
+        city: str,
+        days: int,
+        complementary_info: str,
+        route_plan: str,
+    ) -> str:
+        return f"""\
 Cidade: {city}
 Dias de viagem: {days}
 Informações complementares: {complementary_info}
@@ -34,7 +57,7 @@ Ex.:
   - **Luxor**
   - **MGM Grand**
   - **New York-New-York**
-  - **The Park / T-Mobile Arena**  
+  - **The Park / T-Mobile Arena**
 Crie o link do mapa entre Hotel -> Excalibur
 Crie o link do mapa entre Excalibur -> Luxor
 Crie o link do mapa entre Luxor -> MGM Grand
@@ -45,20 +68,3 @@ Responda em português.
 --- Roteiro (etapa anterior) ---
 {route_plan}
 """
-
-    @classmethod
-    def build_user_prompt(cls, ctx: TripContext) -> str:
-        t = ctx.trip
-        route_plan = ctx.agent_outputs.get(RoutizationAgent.AGENT_ID, "").strip()
-        return cls.USER_PROMPT_TEMPLATE.format(
-            city=t.city.strip(),
-            days=t.days,
-            complementary_info=(t.complementary_info or "").strip() or "(não informado)",
-            route_plan=route_plan or "(vazio — execute a roteirização antes)",
-        )
-
-
-AGENT_ID = MapsAgent.AGENT_ID
-USER_PROMPT_TEMPLATE = MapsAgent.USER_PROMPT_TEMPLATE
-run = MapsAgent.run
-build_user_prompt = MapsAgent.build_user_prompt
