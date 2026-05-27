@@ -3,7 +3,7 @@ Caso de uso: gerar roteiro a partir de uma pasta de transcrições (Lambda SQS /
 
 Encapsula regras de entrada (cidade default), chamada a ``Application`` e uso do texto gerado em memória.
 Se a subpasta de transcrições não existir, segue mesmo assim (só aviso no log).
-Opcionalmente persiste perfil + TXT no S3 (``TripProfileS3Service``); não grava arquivos locais.
+Opcionalmente persiste perfil + JSON da viagem no S3 (``TripProfileS3Service``); não grava arquivos locais.
 """
 
 from __future__ import annotations

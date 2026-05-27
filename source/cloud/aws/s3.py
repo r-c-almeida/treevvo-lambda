@@ -195,7 +195,8 @@ class TripProfileS3Service:
     ) -> dict[str, str]:
         """
         Ao final do processamento: atualiza **o item existente** em ``trips`` (pelo ``id``)
-        em ``profile.json`` e, se sucesso, grava TXT em ``trips/``.
+        em ``profile.json`` e, se sucesso, grava em ``trips/`` um ``.json`` com o mesmo conteúdo
+        decodificado de ``trip_text`` (sem objeto extra ao redor). ``trip_text`` deve ser JSON válido.
 
         Retorna chaves S3 gravadas (profile + trip opcional).
         """
@@ -244,20 +245,32 @@ class TripProfileS3Service:
         err_msg: str | None = None if success else (error_message or "Erro desconhecido")
 
         if success and trip_text is not None:
-            fname = f"trip_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.txt"
+            fname = f"trip_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.json"
             trip_key = f"{user_prefix}/trips/{fname}"
+            raw = (trip_text or "").strip()
+            if raw:
+                try:
+                    parsed = json.loads(raw)
+                except json.JSONDecodeError as e:
+                    logger.error("[S3] trip_text não é JSON válido | id=%s preview=%r", payload.id, raw[:400])
+                    raise ValueError(
+                        "O roteiro a gravar deve ser uma string JSON válida (trip_text)."
+                    ) from e
+                body = json.dumps(parsed, ensure_ascii=False, indent=2).encode("utf-8")
+            else:
+                body = b"{}\n"
             self._s3.put_object(
                 Bucket=self._bucket,
                 Key=trip_key,
-                Body=trip_text.encode("utf-8"),
-                ContentType="text/plain; charset=utf-8",
+                Body=body,
+                ContentType="application/json; charset=utf-8",
             )
             file_generated = f"trips/{fname}"
             logger.info(
-                "[S3] Roteiro .txt gravado | bucket=%s key=%s bytes=%d",
+                "[S3] Roteiro .json gravado | bucket=%s key=%s bytes=%d",
                 self._bucket,
                 trip_key,
-                len(trip_text.encode("utf-8")),
+                len(body),
             )
 
         end_stamp = _now_utc_iso()
@@ -278,9 +291,11 @@ class TripProfileS3Service:
         out_profile["trips"] = trips
         self._save_profile(profile_key, out_profile)
 
+        trip_full_key = file_generated and f"{user_prefix}/{file_generated}" or ""
         out_keys = {
             "profile": profile_key,
-            "trip_txt": file_generated and f"{user_prefix}/{file_generated}" or "",
+            "trip_json": trip_full_key,
+            "trip_txt": trip_full_key,  # legado — mesmo arquivo .json
         }
         logger.info(
             "[S3] Persistência concluída | id=%s | status_viagem=%s | chaves=%s",

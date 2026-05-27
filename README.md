@@ -15,7 +15,7 @@ Serviço de **geração de roteiros de viagem** com LLM (OpenAI), empacotado par
 
 4. **S3 durante a execução (se bucket ativo):** ao iniciar o job, o item em `trips[]` vai para **`CREATING`** com **`generate_start_date`** (UTC ISO). Ao terminar com sucesso: **`FINISHED`**, **`generate_end_date`** e `file_generated`; em erro: **`ERROR`**, **`generate_end_date`** e `error_message`.
 
-5. **Saída:** o texto final do roteiro fica **em memória**. Com S3, `TripProfileS3Service` atualiza `profile.json` conforme os status acima e grava o `.txt` da viagem quando aplicável.
+5. **Saída:** em memória ainda é texto do pipeline; no S3, `TripProfileS3Service` grava em `trips/` um arquivo **`.json`** cujo body é **o mesmo JSON** passado como string em `persist_after_generation` (`Content-Type: application/json`).
 
 6. **Erros:** falhas por mensagem aparecem nos **logs** (ex.: CloudWatch). Em triggers com **Report batch item failures**, retornos com `batchItemFailures` permitem retry só das mensagens que falharam.
 
