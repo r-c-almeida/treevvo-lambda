@@ -19,7 +19,7 @@ class MapsAgent(ServiceBase):
         complementary_info: str,
         route_plan: str,
     ) -> str:
-        return self._chat.chat(
+        return self._timed_chat(
             self._build_prompt(
                 city=city,
                 days=days,

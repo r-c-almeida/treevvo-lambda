@@ -13,6 +13,7 @@ Importação apenas para referência (não usar no pipeline atual):
 from __future__ import annotations
 
 import logging
+import time
 from typing import Callable
 
 from source.agents.attractions_service import AttractionsAgent
@@ -73,80 +74,63 @@ class TripPipeline:
             len(transcripts_block),
         )
 
-        def notify(step: str, text: str) -> None:
+        timings: dict[str, float] = {}
+        pipeline_start = time.perf_counter()
+
+        def notify(step: str, text: str, agent) -> None:
             outputs[step] = text
             ctx.agent_outputs[step] = text
+            timings[step] = agent.last_duration_s
             if cb:
                 cb(step, text, ctx)
 
         try:
             attractions_text = self.attractions.run(
-                city=city,
-                days=days,
-                dates_note=dates_note,
-                complementary_info=complementary_info,
-                transcripts=transcripts_safe,
+                city=city, days=days, dates_note=dates_note,
+                complementary_info=complementary_info, transcripts=transcripts_safe,
             )
-            notify("attractions", attractions_text)
+            notify("attractions", attractions_text, self.attractions)
 
             tips_text = self.tips.run(
-                city=city,
-                days=days,
-                dates_note=dates_note,
-                complementary_info=complementary_info,
-                transcripts=transcripts_safe,
+                city=city, days=days, dates_note=dates_note,
+                complementary_info=complementary_info, transcripts=transcripts_safe,
             )
-            notify("tips", tips_text)
+            notify("tips", tips_text, self.tips)
 
             # --- Hotel (DESATIVADO) ---
-            # hotel_text = self.hotels.run(
-            #     city=city,
-            #     days=days,
-            #     dates_note=dates_note,
-            #     complementary_info=complementary_info,
-            #     transcripts=transcripts_safe,
-            # )
-            # notify("hotels", hotel_text)
+            # hotel_text = self.hotels.run(...)
+            # notify("hotels", hotel_text, self.hotels)
             hotel_text = ""
 
             routization_text = self.routization.run(
-                city=city,
-                days=days,
-                dates_note=dates_note,
-                complementary_info=complementary_info,
-                transcripts=transcripts_safe,
-                hotel=hotel_text,
-                tips=tips_text,
-                attractions=attractions_text,
+                city=city, days=days, dates_note=dates_note,
+                complementary_info=complementary_info, transcripts=transcripts_safe,
+                hotel=hotel_text, tips=tips_text, attractions=attractions_text,
             )
-            notify("routization", routization_text)
+            notify("routization", routization_text, self.routization)
 
             maps_text = self.maps.run(
-                city=city,
-                days=days,
-                complementary_info=complementary_info,
-                route_plan=routization_text,
+                city=city, days=days,
+                complementary_info=complementary_info, route_plan=routization_text,
             )
-            notify("maps", maps_text)
+            notify("maps", maps_text, self.maps)
 
             final_text = self.generate_trip.run(
-                city=city,
-                days=days,
-                dates_note=dates_note,
-                complementary_info=complementary_info,
-                transcripts=transcripts_safe,
-                hotel=hotel_text,
-                tips=tips_text,
-                attractions=attractions_text,
-                routization=routization_text,
-                maps=maps_text,
+                city=city, days=days, dates_note=dates_note,
+                complementary_info=complementary_info, transcripts=transcripts_safe,
+                hotel=hotel_text, tips=tips_text, attractions=attractions_text,
+                routization=routization_text, maps=maps_text,
             )
-            notify("generate_trip", final_text)
+            notify("generate_trip", final_text, self.generate_trip)
         except Exception:
             logger.exception("TripPipeline.run interrompido")
             raise
 
-        meta = {"steps": list(outputs.keys())}
+        total_s = round(time.perf_counter() - pipeline_start, 3)
+        timings["total"] = total_s
+        logger.info("pipeline_total_s=%.3f timings=%s", total_s, timings)
+
+        meta = {"steps": list(outputs.keys()), "timings_s": timings}
         logger.info(
             "TripPipeline.run ok final_chars=%d steps=%s",
             len(final_text),

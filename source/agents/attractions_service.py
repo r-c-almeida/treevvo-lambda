@@ -20,7 +20,7 @@ class AttractionsAgent(ServiceBase):
         complementary_info: str,
         transcripts: str,
     ) -> str:
-        return self._chat.chat(
+        return self._timed_chat(
             self._build_prompt(
                 city=city,
                 days=days,

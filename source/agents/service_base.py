@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import logging
+import time
 from abc import ABC, abstractmethod
 from pathlib import Path
 
 from source.llms.llm_factory import create_llm_chat
+
+logger = logging.getLogger(__name__)
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCS_INSTRUCTIONS_DIR = _REPO_ROOT / "docs" / "instructions"
@@ -20,6 +24,14 @@ class ServiceBase(ABC):
     def __init__(self, *, model: str | None = None) -> None:
         instructions = self.load_instructions()
         self._chat = create_llm_chat(instructions, model=model)
+        self.last_duration_s: float = 0.0
+
+    def _timed_chat(self, prompt: str, **kwargs) -> str:
+        t0 = time.perf_counter()
+        result = self._chat.chat(prompt, **kwargs)
+        self.last_duration_s = round(time.perf_counter() - t0, 3)
+        logger.info("agent=%s duration_s=%.3f", self.__class__.__name__, self.last_duration_s)
+        return result
 
     @property
     @abstractmethod
