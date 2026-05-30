@@ -26,6 +26,7 @@ class GenerateTripAgent(ServiceBase):
         hotel: str = "",
         tips: str,
         attractions: str,
+        routization: str,
         maps: str,
     ) -> str:
         return self._chat.chat(
@@ -38,6 +39,7 @@ class GenerateTripAgent(ServiceBase):
                 hotel=self._nz(hotel),
                 tips=self._nz(tips),
                 attractions=self._nz(attractions),
+                routization=self._nz(routization),
                 maps=self._nz(maps),
             )
         )

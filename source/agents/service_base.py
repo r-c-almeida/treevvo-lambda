@@ -1,12 +1,11 @@
-"""Base para agentes que usam ``OpenAIChat`` + um arquivo em ``docs/instructions``."""
+"""Base para agentes: lê instrução de ``docs/instructions`` e cria o cliente LLM via factory."""
 
 from __future__ import annotations
 
-import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 
-from source.llms.open_ai_chat import DEFAULT_MODEL, OpenAIChat
+from source.llms.llm_factory import create_llm_chat
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCS_INSTRUCTIONS_DIR = _REPO_ROOT / "docs" / "instructions"
@@ -18,13 +17,9 @@ def instructions_path(filename: str) -> Path:
 
 
 class ServiceBase(ABC):
-    def __init__(self, *, model: str = DEFAULT_MODEL) -> None:
-        api_key = os.environ.get("OPENAI_API_KEY", "").strip()
-        if not api_key:
-            raise OSError("OPENAI_API_KEY is not set")
-
+    def __init__(self, *, model: str | None = None) -> None:
         instructions = self.load_instructions()
-        self._chat = OpenAIChat(instruction=instructions, api_key=api_key, model=model)
+        self._chat = create_llm_chat(instructions, model=model)
 
     @property
     @abstractmethod

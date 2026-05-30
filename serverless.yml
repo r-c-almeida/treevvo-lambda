@@ -1,0 +1,35 @@
+service: treevvo-lambda
+
+useDotenv: true
+configValidationMode: warn
+
+plugins:
+  - serverless-dotenv-plugin
+
+provider:
+  name: aws
+  runtime: python3.12
+  region: ${env:AWS_DEFAULT_REGION, 'us-east-2'}
+  stage: ${opt:stage, 'dev'}
+  environment:
+    OPENAI_API_KEY: ${env:OPENAI_API_KEY}
+    ANTHROPIC_API_KEY: ${env:ANTHROPIC_API_KEY, ''}
+    LLM_PROVIDER: ${env:LLM_PROVIDER, 'openai'}
+    SQS_GENERATE_TRIP_QUEUE_URL: ${env:SQS_GENERATE_TRIP_QUEUE_URL}
+    S3_TRIP_PROFILE_BUCKET: ${env:S3_TRIP_PROFILE_BUCKET, ''}
+    LOG_LEVEL: ${env:LOG_LEVEL, 'INFO'}
+    LOG_MAX_CHARS: ${env:LOG_MAX_CHARS, '15000'}
+
+functions:
+  generateTrip:
+    handler: lambda_function.lambda_handler
+    timeout: 300
+    memorySize: 512
+    events:
+      - sqs:
+          arn: arn:aws:sqs:us-east-2:255615880605:generate-trip
+          batchSize: 1
+          functionResponseType: ReportBatchItemFailures
+
+package:
+  artifact: dist/treevvo-lambda.zip

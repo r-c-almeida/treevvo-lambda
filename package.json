@@ -1,0 +1,10 @@
+{
+  "name": "treevvo-lambda",
+  "version": "1.0.0",
+  "description": "Treevvo — geração de roteiros de viagem com IA via AWS Lambda",
+  "devDependencies": {
+    "serverless": "^3.38.0",
+    "serverless-dotenv-plugin": "^6.0.0",
+    "serverless-python-requirements": "^6.1.0"
+  }
+}
