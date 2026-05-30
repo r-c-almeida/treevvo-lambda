@@ -138,6 +138,7 @@ class TripPipeline:
                 hotel=hotel_text,
                 tips=tips_text,
                 attractions=attractions_text,
+                routization=routization_text,
                 maps=maps_text,
             )
             notify("generate_trip", final_text)

@@ -41,12 +41,6 @@ class TipsAgent(ServiceBase):
         return f"""\
 Cidade: {city}
 Dias de viagem: {days}
-Datas / período: {dates_note}
-Informações complementares: {complementary_info}
-
-Com base nas transcrições, extraia e organize dicas práticas (segurança, transporte, costumes, etc.).
-Responda em português.
-
---- Transcrições ---
-{transcripts}
+Período: {dates_note}
+Perfil e preferências do viajante: {complementary_info}
 """
