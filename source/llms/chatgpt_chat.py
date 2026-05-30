@@ -280,6 +280,7 @@ class ChatGPTChat:
             response = self._client.chat.completions.create(
                 model=self._model,
                 messages=messages,
+                max_tokens=16_000,
             )
         except Exception:
             logger.exception(
@@ -291,6 +292,16 @@ class ChatGPTChat:
             raise
 
         choice = response.choices[0]
+        if choice.finish_reason == "length":
+            logger.error(
+                "ChatGPT resposta truncada caller=%s model=%s — aumente max_tokens ou reduza o prompt",
+                who,
+                self._model,
+            )
+            raise ValueError(
+                f"Resposta do modelo truncada (finish_reason=length). "
+                "Reduza o número de dias ou aumente max_tokens."
+            )
         content = choice.message.content
         out = "" if content is None else content
         logger.info(

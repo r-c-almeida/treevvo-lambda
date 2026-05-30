@@ -5,9 +5,19 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from source.agents.service_base import ServiceBase, instructions_path
+
+
+def _extract_json(text: str) -> str:
+    """Remove markdown code fences (```json ... ```) que o modelo pode incluir."""
+    text = text.strip()
+    match = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
+    if match:
+        return match.group(1).strip()
+    return text
 
 
 class GenerateTripAgent(ServiceBase):
@@ -29,7 +39,7 @@ class GenerateTripAgent(ServiceBase):
         routization: str,
         maps: str,
     ) -> str:
-        return self._timed_chat(
+        raw = self._timed_chat(
             self._build_prompt(
                 city=city,
                 days=days,
@@ -43,6 +53,7 @@ class GenerateTripAgent(ServiceBase):
                 maps=self._nz(maps),
             )
         )
+        return _extract_json(raw)
 
     @staticmethod
     def _nz(s: str) -> str:

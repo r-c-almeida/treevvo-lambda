@@ -75,7 +75,7 @@ class ClaudeChat:
 
         kwargs: dict = {
             "model": self._model,
-            "max_tokens": 8096,
+            "max_tokens": 16_000,
             "messages": [{"role": "user", "content": text}],
         }
         if self._system:
@@ -87,6 +87,15 @@ class ClaudeChat:
             logger.exception("Claude erro na API model=%s", self._model)
             raise ClaudeChatApiError(str(e)) from e
 
+        if response.stop_reason == "max_tokens":
+            logger.error(
+                "Claude resposta truncada model=%s — aumente max_tokens ou reduza o prompt",
+                self._model,
+            )
+            raise ClaudeChatApiError(
+                "Resposta do modelo truncada (stop_reason=max_tokens). "
+                "Reduza o número de dias ou aumente max_tokens."
+            )
         out = response.content[0].text if response.content else ""
         logger.info(
             "Claude retorno model=%s response_chars=%d response=%s",
